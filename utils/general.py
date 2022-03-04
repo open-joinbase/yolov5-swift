@@ -48,6 +48,11 @@ os.environ['NUMEXPR_MAX_THREADS'] = str(NUM_THREADS)  # NumExpr max threads
 os.environ['OMP_NUM_THREADS'] = str(NUM_THREADS)  # OpenMP max threads (PyTorch and SciPy)
 
 
+def delect_no_object(pred:torch.Tensor):
+    idx=torch.all(pred==0,dim=1)
+    return pred[idx==False,:]
+
+
 def is_kaggle():
     # Is environment a Kaggle Notebook?
     try:
