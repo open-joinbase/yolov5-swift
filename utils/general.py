@@ -506,6 +506,16 @@ def one_cycle(y1=0.0, y2=1.0, steps=100):
     return lambda x: ((1 - math.cos(x * math.pi / steps)) / 2) * (y2 - y1) + y1
 
 
+def two_linear(lrf, e):
+    # inflection point
+    c = e/6
+    # first line end point
+    d = c + 20
+    # cross
+    b = ((1 - c / d) * (1.0 - lrf) + lrf)/ ((1 - c / e) * (1.0 - lrf) + lrf)
+    return lambda x: ((1 - x /d) * (1.0 - lrf) + lrf) if x < c else ((1 - x / e) * (1.0 - lrf) + lrf)*b
+
+
 def colorstr(*input):
     # Colors a string https://en.wikipedia.org/wiki/ANSI_escape_code, i.e.  colorstr('blue', 'hello world')
     *args, string = input if len(input) > 1 else ('blue', 'bold', input[0])  # color arguments, string
