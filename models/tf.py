@@ -26,12 +26,76 @@ import tensorflow as tf
 import torch
 import torch.nn as nn
 from tensorflow import keras
+from tensorflow.keras import backend as K
 
 from models.common import C3, SPP, SPPF, Bottleneck, BottleneckCSP, Concat, Conv, DWConv, Focus, autopad
 from models.experimental import CrossConv, MixConv2d, attempt_load
 from models.yolo import Detect
 from utils.activations import SiLU
-from utils.general import LOGGER, make_divisible, print_args
+from utils.general import LOGGER, make_divisible, print_args, NMS
+
+
+class TFconv_bn_relu_maxpool(keras.layers.Layer):
+    def __init__(self, c1, c2, w=None):
+        super().__init__()
+        self.cv1 = TFConv(c1, c2, k=3, s=2, p=1, w=w.cv1)
+        self.m = keras.layers.MaxPool2D(pool_size=(3, 3), strides=2)
+
+    def call(self, x):
+        return self.m(self.cv1(x))
+
+
+def TFchannel_shuffle(x, groups):
+    if K.image_data_format() == 'channels_last':
+        height, width, in_channels = K.int_shape(x)[1:]
+        channels_per_group = in_channels // groups
+        pre_shape = [-1, height, width, groups, channels_per_group]
+        dim = (0, 1, 2, 4, 3)
+        later_shape = [-1, height, width, in_channels]
+    else:
+        in_channels, height, width = K.int_shape(x)[1:]
+        channels_per_group = in_channels // groups
+        pre_shape = [-1, groups, channels_per_group, height, width]
+        dim = (0, 2, 1, 3, 4)
+        later_shape = [-1, in_channels, height, width]
+
+    x = Lambda(lambda z: K.reshape(z, pre_shape))(x)
+    x = Lambda(lambda z: K.permute_dimensions(z, dim))(x)
+    x = Lambda(lambda z: K.reshape(z, later_shape))(x)
+
+    return x
+
+
+class TFShuffleNetV2_InvertedResidual(keras.layers.Layer):
+    def __init__(self, c1: int, c2: int, stride: int, w=None):
+        super().__init__()
+        if not (1 <= stride <= 3):
+            raise ValueError('illegal stride value')
+        self.stride = stride
+        branch_features = c2 // 2
+        assert (self.stride != 1) or (c1 == branch_features << 1)
+
+        if self.stride > 1:
+            self.cv1 = TFConv(c1, c1, 3, self.stride, act=True, g=c1, w=w.cv1)
+            self.cv2 = TFConv(c1, branch_features, 1, 1, w=w.cv2)
+
+        self.m = keras.Sequential([
+            TFConv(c1 if (self.stride > 1) else branch_features, branch_features, k=1, s=1, w=w.m[0]),
+            TFConv(branch_features, branch_features, 3, self.stride, 1, branch_features, w=w.m[1]),
+            TFConv(branch_features, branch_features, 1, 1, w=w.m[2])
+        ])
+
+    def call(self, x):
+        if self.stride == 1:
+            x1, x2 = tf.split(x, 2, axis=-1)
+            out = tf.concat((x1, self.m(x2)), axis=-1)
+        else:
+            out = tf.concat((self.cv2(self.cv1(x)), self.m(x)), axis=-1)
+
+        out = TFchannel_shuffle(out, 2)
+
+        return out
+
 
 
 class TFBN(keras.layers.Layer):
@@ -350,18 +414,7 @@ class TFModel:
 
         # Add TensorFlow NMS
         if tf_nms:
-            boxes = self._xywh2xyxy(x[0][..., :4])
-            probs = x[0][:, :, 4:5]
-            classes = x[0][:, :, 5:]
-            scores = probs * classes
-            if agnostic_nms:
-                nms = AgnosticNMS()((boxes, classes, scores), topk_all, iou_thres, conf_thres)
-                return nms, x[1]
-            else:
-                boxes = tf.expand_dims(boxes, 2)
-                nms = tf.image.combined_non_max_suppression(
-                    boxes, scores, topk_per_class, topk_all, iou_thres, conf_thres, clip_boxes=False)
-                return nms, x[1]
+            return NMS(x[0])
 
         return x[0]  # output only first tensor [1,6300,85] = [xywh, conf, class0, class1, ...]
         # x = x[0][0]  # [x(1,6300,85), ...] to x(6300,85)
