@@ -26,12 +26,77 @@ import tensorflow as tf
 import torch
 import torch.nn as nn
 from tensorflow import keras
+from tensorflow.keras import backend as K
 
 from models.common import C3, SPP, SPPF, Bottleneck, BottleneckCSP, Concat, Conv, DWConv, Focus, autopad
+from models.swift_common import BMConv, ShuffleNetV2
 from models.experimental import CrossConv, MixConv2d, attempt_load
 from models.yolo import Detect
 from utils.activations import SiLU
 from utils.general import LOGGER, make_divisible, print_args
+from tensorflow.keras.layers import Lambda
+
+
+class TFBMConv(keras.layers.Layer):
+    def __init__(self, c1, c2, w=None):
+        super().__init__()
+        self.cv1 = TFConv(c1, c2, k=3, s=2, p=1, w=w.cv1)
+        self.m = keras.layers.MaxPool2D(pool_size=(3, 3), strides=2)
+
+    def call(self, x):
+        return self.m(self.cv1(x))
+
+
+def TFchannel_shuffle(x, groups):
+    if K.image_data_format() == 'channels_last':
+        height, width, in_channels = K.int_shape(x)[1:]
+        channels_per_group = in_channels // groups
+        pre_shape = [-1, height, width, groups, channels_per_group]
+        dim = (0, 1, 2, 4, 3)
+        later_shape = [-1, height, width, in_channels]
+    else:
+        in_channels, height, width = K.int_shape(x)[1:]
+        channels_per_group = in_channels // groups
+        pre_shape = [-1, groups, channels_per_group, height, width]
+        dim = (0, 2, 1, 3, 4)
+        later_shape = [-1, in_channels, height, width]
+
+    x = Lambda(lambda z: K.reshape(z, pre_shape))(x)
+    x = Lambda(lambda z: K.permute_dimensions(z, dim))(x)
+    x = Lambda(lambda z: K.reshape(z, later_shape))(x)
+
+    return x
+
+
+class TFShuffleNetV2(keras.layers.Layer):
+    def __init__(self, c1: int, c2: int, stride: int, w=None):
+        super().__init__()
+        if not (1 <= stride <= 3):
+            raise ValueError('illegal stride value')
+        self.stride = stride
+        branch_features = c2 // 2
+        assert (self.stride != 1) or (c1 == branch_features << 1)
+
+        if self.stride > 1:
+            self.cv1 = TFConv(c1, c1, 3, self.stride, act=True, g=c1, w=w.cv1)
+            self.cv2 = TFConv(c1, branch_features, 1, 1, w=w.cv2)
+
+        self.m = keras.Sequential([
+            TFConv(c1 if (self.stride > 1) else branch_features, branch_features, k=1, s=1, w=w.m[0]),
+            TFConv(branch_features, branch_features, 3, self.stride, 1, branch_features, w=w.m[1]),
+            TFConv(branch_features, branch_features, 1, 1, w=w.m[2])
+        ])
+
+    def call(self, x):
+        if self.stride == 1:
+            x1, x2 = tf.split(x, 2, axis=-1)
+            out = tf.concat((x1, self.m(x2)), axis=-1)
+        else:
+            out = tf.concat((self.cv2(self.cv1(x)), self.m(x)), axis=-1)
+
+        out = TFchannel_shuffle(out, 2)
+
+        return out
 
 
 class TFBN(keras.layers.Layer):
@@ -60,19 +125,36 @@ class TFPad(keras.layers.Layer):
 
 class TFConv(keras.layers.Layer):
     # Standard convolution
-    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True, w=None):
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True, w=None, bias=False):
         # ch_in, ch_out, weights, kernel, stride, padding, groups
         super().__init__()
-        assert g == 1, "TF v2.2 Conv2D does not support 'groups' argument"
+        # assert g == 1, "TF v2.2 Conv2D does not support 'groups' argument"
         assert isinstance(k, int), "Convolution with multiple kernels are not allowed."
         # TensorFlow convolution padding is inconsistent with PyTorch (e.g. k=3 s=2 'SAME' padding)
         # see https://stackoverflow.com/questions/52975843/comparing-conv2d-with-padding-between-tensorflow-and-pytorch
+        # tf.compat.v1.keras.layers.Conv2D()
+        self.g = g
 
-        conv = keras.layers.Conv2D(
-            c2, k, s, 'SAME' if s == 1 else 'VALID', use_bias=False if hasattr(w, 'bn') else True,
-            kernel_initializer=keras.initializers.Constant(w.conv.weight.permute(2, 3, 1, 0).numpy()),
-            bias_initializer='zeros' if hasattr(w, 'bn') else keras.initializers.Constant(w.conv.bias.numpy()))
-        self.conv = conv if s == 1 else keras.Sequential([TFPad(autopad(k, p)), conv])
+        if g == 1:
+            conv = [keras.layers.Conv2D(
+                c2, k, s, 'SAME' if s == 1 else 'VALID', use_bias=False if hasattr(w, 'bn') else True,
+                kernel_initializer=keras.initializers.Constant(w.conv.weight.permute(2, 3, 1, 0).numpy()),
+                bias_initializer='zeros' if hasattr(w, 'bn') else keras.initializers.Constant(w.conv.bias.numpy()))]
+        else:
+            conv = [keras.layers.Conv2D(
+                1, k, s, 'SAME' if s == 1 else 'VALID', use_bias=False if hasattr(w, 'bn') else True,
+                kernel_initializer=keras.initializers.Constant(
+                    w.conv.weight[i:i + 1, :, :, :].permute(2, 3, 1, 0).numpy()),
+                bias_initializer='zeros' if hasattr(w, 'bn') else keras.initializers.Constant(
+                    w.conv.bias[i:i + 1].numpy())) for i in range(g)]
+        if s == 1:
+            self.conv = conv
+        else:
+            if g != 1:
+                self.conv = [keras.Sequential([TFPad(autopad(k, p)), con]) for con in conv]
+            else:
+                self.conv = [keras.Sequential([TFPad(autopad(k, p)), *conv])]
+
         self.bn = TFBN(w.bn) if hasattr(w, 'bn') else tf.identity
 
         # YOLOv5 activations
@@ -83,10 +165,12 @@ class TFConv(keras.layers.Layer):
         elif isinstance(w.act, (nn.SiLU, SiLU)):
             self.act = (lambda x: keras.activations.swish(x)) if act else tf.identity
         else:
-            raise Exception(f'no matching TensorFlow activation found for {w.act}')
+            self.act = (lambda x: keras.activations.swish(x)) if act else tf.identity
 
     def call(self, inputs):
-        return self.act(self.bn(self.conv(inputs)))
+        x = tf.concat([c(b) for c, b in zip(self.conv, tf.split(inputs, self.g, axis=-1))], axis=-1)
+
+        return self.act(self.bn(x))
 
 
 class TFFocus(keras.layers.Layer):
@@ -285,7 +369,8 @@ def parse_model(d, ch, model, imgsz):  # model_dict, input_channels(3)
                 pass
 
         n = max(round(n * gd), 1) if n > 1 else n  # depth gain
-        if m in [nn.Conv2d, Conv, Bottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP, C3]:
+        if m in [nn.Conv2d, Conv, Bottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP, C3,
+                 BMConv, ShuffleNetV2]:
             c1, c2 = ch[f], args[0]
             c2 = make_divisible(c2 * gw, 8) if c2 != no else c2
 
@@ -349,6 +434,7 @@ class TFModel:
             x = m(x)  # run
             y.append(x if m.i in self.savelist else None)  # save output
 
+        # Add TensorFlow NMS
         # Add TensorFlow NMS
         if tf_nms:
             boxes = self._xywh2xyxy(x[0][..., :4])

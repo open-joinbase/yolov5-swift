@@ -1,6 +1,5 @@
-import torch
-import torch.nn as nn
 from torch import Tensor
+from models.common import *
 
 
 def channel_shuffle(x: Tensor, groups: int) -> Tensor:
@@ -19,76 +18,50 @@ def channel_shuffle(x: Tensor, groups: int) -> Tensor:
     return x
 
 
-class conv_bn_relu_maxpool(nn.Module):
-    def __init__(self, c1, c2):  # ch_in, ch_out
-        super(conv_bn_relu_maxpool, self).__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(c1, c2, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(c2),
-            nn.ReLU(inplace=True),
-        )
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1, dilation=1, ceil_mode=False)
+# conv bn relu maxpool
+class BMConv(nn.Module):
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out
+        super(BMConv, self).__init__()
+        self.cv1 = Conv(c1, c2, 3, 2, act=nn.ReLU(True))
+        self.m = nn.MaxPool2d(kernel_size=3, stride=2, padding=1, dilation=1, ceil_mode=False)
 
     def forward(self, x):
-        return self.maxpool(self.conv(x))
+        return self.m(self.cv1(x))
 
 
-class ShuffleNetV2_InvertedResidual(nn.Module):
+# ShuffleNetV2 Inverted Residual Neural Network
+class ShuffleNetV2(nn.Module):
     def __init__(
             self,
-            inp: int,
-            oup: int,
-            stride: int
+            c1, c2, stride,
     ) -> None:
-        super(ShuffleNetV2_InvertedResidual, self).__init__()
+        super(ShuffleNetV2, self).__init__()
 
         if not (1 <= stride <= 3):
             raise ValueError('illegal stride value')
         self.stride = stride
 
-        branch_features = oup // 2
-        assert (self.stride != 1) or (inp == branch_features << 1)
+        branch_features = c2 // 2
+        assert (self.stride != 1) or (c1 == branch_features << 1)
 
         if self.stride > 1:
-            self.branch1 = nn.Sequential(
-                self.depthwise_conv(inp, inp, kernel_size=3, stride=self.stride, padding=1),
-                nn.BatchNorm2d(inp),
-                nn.Conv2d(inp, branch_features, kernel_size=1, stride=1, padding=0, bias=False),
-                nn.BatchNorm2d(branch_features),
-                nn.ReLU(inplace=True),
-            )
+            self.cv1 = Conv(c1, c1, 3, self.stride, act=nn.ReLU(True), g=c1)
+            self.cv2 = Conv(c1, branch_features, 1, 1)
         else:
-            self.branch1 = nn.Sequential()
+            self.cv1 = nn.Sequential()
+            self.cv2 = nn.Sequential()
 
-        self.branch2 = nn.Sequential(
-            nn.Conv2d(inp if (self.stride > 1) else branch_features,
-                      branch_features, kernel_size=1, stride=1, padding=0, bias=False),
-            nn.BatchNorm2d(branch_features),
-            nn.ReLU(inplace=True),
-            self.depthwise_conv(branch_features, branch_features, kernel_size=3, stride=self.stride, padding=1),
-            nn.BatchNorm2d(branch_features),
-            nn.Conv2d(branch_features, branch_features, kernel_size=1, stride=1, padding=0, bias=False),
-            nn.BatchNorm2d(branch_features),
-            nn.ReLU(inplace=True),
-        )
-
-    @staticmethod
-    def depthwise_conv(
-            i: int,
-            o: int,
-            kernel_size: int,
-            stride: int = 1,
-            padding: int = 0,
-            bias: bool = False
-    ) -> nn.Conv2d:
-        return nn.Conv2d(i, o, kernel_size, stride, padding, bias=bias, groups=i)
+        self.m = nn.Sequential(
+            Conv(c1 if (self.stride > 1) else branch_features, branch_features, 1, 1),
+            Conv(branch_features, branch_features, 3, self.stride, 1, g=branch_features),
+            Conv(branch_features, branch_features, 1, 1))
 
     def forward(self, x: Tensor) -> Tensor:
         if self.stride == 1:
             x1, x2 = x.chunk(2, dim=1)
-            out = torch.cat((x1, self.branch2(x2)), dim=1)
+            out = torch.cat((x1, self.m(x2)), dim=1)
         else:
-            out = torch.cat((self.branch1(x), self.branch2(x)), dim=1)
+            out = torch.cat((self.cv2(self.cv1(x)), self.m(x)), dim=1)
 
         out = channel_shuffle(out, 2)
 
