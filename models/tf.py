@@ -29,13 +29,15 @@ from tensorflow import keras
 from tensorflow.keras import backend as K
 
 from models.common import C3, SPP, SPPF, Bottleneck, BottleneckCSP, Concat, Conv, DWConv, Focus, autopad
+from models.swift_common import BMConv, ShuffleNetV2
 from models.experimental import CrossConv, MixConv2d, attempt_load
 from models.yolo import Detect
 from utils.activations import SiLU
-from utils.general import LOGGER, make_divisible, print_args, NMS
+from utils.general import LOGGER, make_divisible, print_args
+from tensorflow.keras.layers import Lambda
 
 
-class TFconv_bn_relu_maxpool(keras.layers.Layer):
+class TFBMConv(keras.layers.Layer):
     def __init__(self, c1, c2, w=None):
         super().__init__()
         self.cv1 = TFConv(c1, c2, k=3, s=2, p=1, w=w.cv1)
@@ -66,7 +68,7 @@ def TFchannel_shuffle(x, groups):
     return x
 
 
-class TFShuffleNetV2_InvertedResidual(keras.layers.Layer):
+class TFShuffleNetV2(keras.layers.Layer):
     def __init__(self, c1: int, c2: int, stride: int, w=None):
         super().__init__()
         if not (1 <= stride <= 3):
@@ -95,7 +97,6 @@ class TFShuffleNetV2_InvertedResidual(keras.layers.Layer):
         out = TFchannel_shuffle(out, 2)
 
         return out
-
 
 
 class TFBN(keras.layers.Layer):
@@ -368,7 +369,8 @@ def parse_model(d, ch, model, imgsz):  # model_dict, input_channels(3)
                 pass
 
         n = max(round(n * gd), 1) if n > 1 else n  # depth gain
-        if m in [nn.Conv2d, Conv, Bottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP, C3]:
+        if m in [nn.Conv2d, Conv, Bottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP, C3,
+                 BMConv, ShuffleNetV2]:
             c1, c2 = ch[f], args[0]
             c2 = make_divisible(c2 * gw, 8) if c2 != no else c2
 
@@ -432,8 +434,20 @@ class TFModel:
             y.append(x if m.i in self.savelist else None)  # save output
 
         # Add TensorFlow NMS
+        # Add TensorFlow NMS
         if tf_nms:
-            return NMS(x[0])
+            boxes = self._xywh2xyxy(x[0][..., :4])
+            probs = x[0][:, :, 4:5]
+            classes = x[0][:, :, 5:]
+            scores = probs * classes
+            if agnostic_nms:
+                nms = AgnosticNMS()((boxes, classes, scores), topk_all, iou_thres, conf_thres)
+                return nms, x[1]
+            else:
+                boxes = tf.expand_dims(boxes, 2)
+                nms = tf.image.combined_non_max_suppression(
+                    boxes, scores, topk_per_class, topk_all, iou_thres, conf_thres, clip_boxes=False)
+                return nms, x[1]
 
         return x[0]  # output only first tensor [1,6300,85] = [xywh, conf, class0, class1, ...]
         # x = x[0][0]  # [x(1,6300,85), ...] to x(6300,85)

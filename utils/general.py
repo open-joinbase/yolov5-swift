@@ -47,15 +47,6 @@ cv2.setNumThreads(0)  # prevent OpenCV from multithreading (incompatible with Py
 os.environ['NUMEXPR_MAX_THREADS'] = str(NUM_THREADS)  # NumExpr max threads
 os.environ['OMP_NUM_THREADS'] = str(NUM_THREADS)  # OpenMP max threads (PyTorch and SciPy)
 
-
-def NMS(prediction):
-    pred=prediction[0]
-    mask = tf.argsort(pred[:, 4], direction='DESCENDING')
-    pred=tf.gather(pred,mask)
-
-    return pred[:20,:][::2]
-
-
 def is_kaggle():
     # Is environment a Kaggle Notebook?
     try:
