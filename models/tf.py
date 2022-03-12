@@ -124,19 +124,36 @@ class TFPad(keras.layers.Layer):
 
 class TFConv(keras.layers.Layer):
     # Standard convolution
-    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True, w=None):
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True, w=None, bias=False):
         # ch_in, ch_out, weights, kernel, stride, padding, groups
         super().__init__()
-        assert g == 1, "TF v2.2 Conv2D does not support 'groups' argument"
+        # assert g == 1, "TF v2.2 Conv2D does not support 'groups' argument"
         assert isinstance(k, int), "Convolution with multiple kernels are not allowed."
         # TensorFlow convolution padding is inconsistent with PyTorch (e.g. k=3 s=2 'SAME' padding)
         # see https://stackoverflow.com/questions/52975843/comparing-conv2d-with-padding-between-tensorflow-and-pytorch
+        # tf.compat.v1.keras.layers.Conv2D()
+        self.g = g
 
-        conv = keras.layers.Conv2D(
-            c2, k, s, 'SAME' if s == 1 else 'VALID', use_bias=False if hasattr(w, 'bn') else True,
-            kernel_initializer=keras.initializers.Constant(w.conv.weight.permute(2, 3, 1, 0).numpy()),
-            bias_initializer='zeros' if hasattr(w, 'bn') else keras.initializers.Constant(w.conv.bias.numpy()))
-        self.conv = conv if s == 1 else keras.Sequential([TFPad(autopad(k, p)), conv])
+        if g == 1:
+            conv = [keras.layers.Conv2D(
+                c2, k, s, 'SAME' if s == 1 else 'VALID', use_bias=False if hasattr(w, 'bn') else True,
+                kernel_initializer=keras.initializers.Constant(w.conv.weight.permute(2, 3, 1, 0).numpy()),
+                bias_initializer='zeros' if hasattr(w, 'bn') else keras.initializers.Constant(w.conv.bias.numpy()))]
+        else:
+            conv = [keras.layers.Conv2D(
+                1, k, s, 'SAME' if s == 1 else 'VALID', use_bias=False if hasattr(w, 'bn') else True,
+                kernel_initializer=keras.initializers.Constant(
+                    w.conv.weight[i:i + 1, :, :, :].permute(2, 3, 1, 0).numpy()),
+                bias_initializer='zeros' if hasattr(w, 'bn') else keras.initializers.Constant(
+                    w.conv.bias[i:i + 1].numpy())) for i in range(g)]
+        if s == 1:
+            self.conv = conv
+        else:
+            if g != 1:
+                self.conv = [keras.Sequential([TFPad(autopad(k, p)), con]) for con in conv]
+            else:
+                self.conv = [keras.Sequential([TFPad(autopad(k, p)), *conv])]
+
         self.bn = TFBN(w.bn) if hasattr(w, 'bn') else tf.identity
 
         # YOLOv5 activations
@@ -147,10 +164,12 @@ class TFConv(keras.layers.Layer):
         elif isinstance(w.act, (nn.SiLU, SiLU)):
             self.act = (lambda x: keras.activations.swish(x)) if act else tf.identity
         else:
-            raise Exception(f'no matching TensorFlow activation found for {w.act}')
+            self.act = (lambda x: keras.activations.swish(x)) if act else tf.identity
 
     def call(self, inputs):
-        return self.act(self.bn(self.conv(inputs)))
+        x = tf.concat([c(b) for c, b in zip(self.conv, tf.split(inputs, self.g, axis=-1))], axis=-1)
+
+        return self.act(self.bn(x))
 
 
 class TFFocus(keras.layers.Layer):
