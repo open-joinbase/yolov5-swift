@@ -247,7 +247,7 @@ def export_engine(model, im, file, train, half, simplify, workspace=4, verbose=F
 
 def export_saved_model(model, im, file, dynamic,
                        tf_nms=False, agnostic_nms=False, topk_per_class=100, topk_all=100, iou_thres=0.45,
-                       conf_thres=0.25, keras=False, prefix=colorstr('TensorFlow SavedModel:')):
+                       conf_thres=0.25, keras=False, prefix=colorstr('TensorFlow SavedModel:'),nms_head=6):
     # YOLOv5 TensorFlow SavedModel export
     try:
         import tensorflow as tf
@@ -259,7 +259,7 @@ def export_saved_model(model, im, file, dynamic,
         f = str(file).replace('.pt', '_saved_model')
         batch_size, ch, *imgsz = list(im.shape)  # BCHW
 
-        tf_model = TFModel(cfg=model.yaml, model=model, nc=model.nc, imgsz=imgsz)
+        tf_model = TFModel(cfg=model.yaml, model=model, nc=model.nc, imgsz=imgsz,nms_head=nms_head)
         im = tf.zeros((batch_size, *imgsz, ch))  # BHWC order for TensorFlow
         _ = tf_model.predict(im, tf_nms, agnostic_nms, topk_per_class, topk_all, iou_thres, conf_thres)
         inputs = tf.keras.Input(shape=(*imgsz, ch), batch_size=None if dynamic else batch_size)
@@ -320,7 +320,8 @@ def export_tflite(keras_model, im, file, int8, data, ncalib, prefix=colorstr('Te
         f = str(file).replace('.pt', '-fp16.tflite')
 
         converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
-        converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS]
+        converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS,
+                                               tf.lite.OpsSet.SELECT_TF_OPS]
         converter.target_spec.supported_types = [tf.float16]
         converter.optimizations = [tf.lite.Optimize.DEFAULT]
         if int8:
@@ -426,6 +427,7 @@ def run(data=ROOT / 'data/coco128.yaml',  # 'dataset.yaml path'
         verbose=False,  # TensorRT: verbose log
         workspace=4,  # TensorRT: workspace size (GB)
         nms=False,  # TF: add NMS to model
+        nms_head=6,
         agnostic_nms=False,  # TF: add agnostic NMS to model
         topk_per_class=100,  # TF.js NMS: topk per class to keep
         topk_all=100,  # TF.js NMS: topk for all classes to keep
@@ -496,7 +498,7 @@ def run(data=ROOT / 'data/coco128.yaml',  # 'dataset.yaml path'
         assert not (tflite and tfjs), 'TFLite and TF.js models must be exported separately, please pass only one type.'
         model, f[5] = export_saved_model(model, im, file, dynamic, tf_nms=nms or agnostic_nms or tfjs,
                                          agnostic_nms=agnostic_nms or tfjs, topk_per_class=topk_per_class,
-                                         topk_all=topk_all, conf_thres=conf_thres, iou_thres=iou_thres)  # keras model
+                                         topk_all=topk_all, conf_thres=conf_thres, iou_thres=iou_thres,nms_head=nms_head)  # keras model
         if pb or tfjs:  # pb prerequisite to tfjs
             f[6] = export_pb(model, im, file)
         if tflite or edgetpu:
@@ -536,6 +538,7 @@ def parse_opt():
     parser.add_argument('--verbose', action='store_true', help='TensorRT: verbose log')
     parser.add_argument('--workspace', type=int, default=4, help='TensorRT: workspace size (GB)')
     parser.add_argument('--nms', action='store_true', help='TF: add NMS to model')
+    parser.add_argument('--nms-head', type=int, default=6, help='seting NMS output object number')
     parser.add_argument('--agnostic-nms', action='store_true', help='TF: add agnostic NMS to model')
     parser.add_argument('--topk-per-class', type=int, default=100, help='TF.js NMS: topk per class to keep')
     parser.add_argument('--topk-all', type=int, default=100, help='TF.js NMS: topk for all classes to keep')

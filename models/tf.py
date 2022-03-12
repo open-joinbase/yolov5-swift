@@ -321,8 +321,9 @@ def parse_model(d, ch, model, imgsz):  # model_dict, input_channels(3)
 
 
 class TFModel:
-    def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, model=None, imgsz=(640, 640)):  # model, channels, classes
+    def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, model=None, imgsz=(640, 640),nms_head=6):  # model, channels, classes
         super().__init__()
+        self.nms_head=nms_head
         if isinstance(cfg, dict):
             self.yaml = cfg  # model dict
         else:  # is *.yaml
@@ -361,7 +362,10 @@ class TFModel:
                 boxes = tf.expand_dims(boxes, 2)
                 nms = tf.image.combined_non_max_suppression(
                     boxes, scores, topk_per_class, topk_all, iou_thres, conf_thres, clip_boxes=False)
-                return nms, x[1]
+                conden_ind=tf.expand_dims(nms[1],axis=2)
+                class_ind=tf.expand_dims(nms[2],axis=2)
+                mm=tf.concat((nms[0],conden_ind,class_ind),axis=2)
+                return mm[0][:self.nms_head,:]#, x[1]
 
         return x[0]  # output only first tensor [1,6300,85] = [xywh, conf, class0, class1, ...]
         # x = x[0][0]  # [x(1,6300,85), ...] to x(6300,85)
