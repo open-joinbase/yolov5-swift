@@ -1,3 +1,4 @@
+import torch
 from torch import Tensor
 from models.common import *
 
@@ -51,17 +52,20 @@ class ShuffleNetV2(nn.Module):
             self.cv1 = nn.Sequential()
             self.cv2 = nn.Sequential()
 
-        self.m = nn.Sequential(
-            Conv(c1 if (self.stride > 1) else branch_features, branch_features, 1, 1),
-            Conv(branch_features, branch_features, 3, self.stride, 1, g=branch_features),
-            Conv(branch_features, branch_features, 1, 1))
+        # self.m = nn.Sequential(
+        #     Conv(c1 if (self.stride > 1) else branch_features, branch_features, 1, 1),
+        #     Conv(branch_features, branch_features, 3, self.stride, 1, g=branch_features),
+        #     Conv(branch_features, branch_features, 1, 1))
+        self.cv3 = Conv(c1 if (self.stride > 1) else branch_features, branch_features, 1, 1)
+        self.cv4 = Conv(branch_features, branch_features, 3, self.stride, 1, g=branch_features)
+        self.cv5 = Conv(branch_features, branch_features, 1, 1)
 
     def forward(self, x: Tensor) -> Tensor:
         if self.stride == 1:
             x1, x2 = x.chunk(2, dim=1)
-            out = torch.cat((x1, self.m(x2)), dim=1)
+            out = torch.cat((x1, self.cv5(self.cv4(self.cv3(x2)))), dim=1)
         else:
-            out = torch.cat((self.cv2(self.cv1(x)), self.m(x)), dim=1)
+            out = torch.cat((self.cv2(self.cv1(x)), self.cv5(self.cv4(self.cv3(x)))), dim=1)
 
         out = channel_shuffle(out, 2)
 
