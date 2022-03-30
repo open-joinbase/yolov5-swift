@@ -17,7 +17,7 @@ warmup_epochs: 3
 warmup_momentum: 0.6
 warmup_bias_lr: 0.2
 box: 0.02
-cls: 0.2
+cls: 0.21
 cls_pw: 0.5
 obj: 0.5
 obj_pw: 0.7
