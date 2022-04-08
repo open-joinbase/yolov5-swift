@@ -147,7 +147,7 @@ class TFConv(keras.layers.Layer):
         elif isinstance(w.act, nn.Hardswish):
             self.act = (lambda x: x * tf.nn.relu6(x + 3) * 0.166666667) if act else tf.identity
         elif isinstance(w.act, (nn.SiLU, SiLU)):
-            self.act = (lambda x: keras.activations.swish(x)) if act else tf.identity
+            self.act = (lambda x: keras.activations.relu(x, alpha=0.1)) if act else tf.identity
         elif isinstance(w.act, nn.ReLU):
             self.act = (lambda x: keras.activations.swish(x)) if act else tf.identity
         else:
