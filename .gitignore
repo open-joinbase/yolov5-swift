@@ -19,6 +19,7 @@
 *.avi
 *.data
 *.json
+!uf2families.json
 *.cfg
 !setup.cfg
 !cfg/yolov3*.cfg
