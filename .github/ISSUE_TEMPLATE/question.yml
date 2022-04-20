@@ -1,21 +1,21 @@
 name: ❓ Question
-description: Ask a YOLOv5 question
+description: Ask a YOLOv5-Swift question
 # title: " "
 labels: [question]
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for asking a YOLOv5 ❓ Question!
+        Thank you for asking a YOLOv5-Swift ❓ Question!
 
   - type: checkboxes
     attributes:
       label: Search before asking
       description: >
-        Please search the [issues](https://github.com/ultralytics/yolov5/issues) and [discussions](https://github.com/ultralytics/yolov5/discussions) to see if a similar question already exists.
+        Please search the [issues](https://github.com/Seeed-Studio/yolov5-swift/issues) and [discussions](https://github.com/Seeed-Studio/yolov5-swift/discussions) to see if a similar question already exists.
       options:
         - label: >
-            I have searched the YOLOv5 [issues](https://github.com/ultralytics/yolov5/issues) and [discussions](https://github.com/ultralytics/yolov5/discussions) and found no similar questions.
+            I have searched the YOLOv5-Swift [issues](https://github.com/Seeed-Studio/yolov5-swift/issues) and [discussions](https://github.com/Seeed-Studio/yolov5-swift/discussions) and found no similar questions.
           required: true
 
   - type: textarea
