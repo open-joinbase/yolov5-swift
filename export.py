@@ -330,8 +330,8 @@ def export_tflite(keras_model, im, file, int8, data, ncalib, prefix=colorstr('Te
             converter.representative_dataset = lambda: representative_dataset_gen(dataset, ncalib)
             converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
             converter.target_spec.supported_types = []
-            converter.inference_input_type = tf.uint8  # or tf.int8
-            converter.inference_output_type = tf.uint8  # or tf.int8
+            converter.inference_input_type = tf.int8  # or tf.int8
+            converter.inference_output_type = tf.int8  # or tf.int8
             converter.experimental_new_quantizer = False
             f = str(file).replace('.pt', '-int8.tflite')
 
