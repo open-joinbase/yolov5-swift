@@ -47,14 +47,12 @@ def convert_endian(buf, endian):
             buf_tmp[j] = buf[i + endian - j - 1]
         outp += buf_tmp
 
-    for i in range(0, mod, 1):
-        for j in range(0, endian, 1):
-            if j < endian - mod:
-                buf_tmp[j] = 0
-            else:
-                buf_tmp[j] = buf[len - j + (endian - mod)]
-        outp += buf_tmp
-        
+    for i in range(0, endian, 1):
+        if i < endian - mod:
+            buf_tmp[i] = 0
+        else:
+            buf_tmp[i] = buf[len(buf) - i + (endian - mod) - 1]
+    outp += buf_tmp
         
     return bytes(outp)
 
