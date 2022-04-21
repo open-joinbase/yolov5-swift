@@ -149,7 +149,7 @@ class TFConv(keras.layers.Layer):
         elif isinstance(w.act, (nn.SiLU, SiLU)):
             self.act = (lambda x: keras.activations.relu(x, alpha=0.1)) if act else tf.identity
         elif isinstance(w.act, nn.ReLU):
-            self.act = (lambda x: keras.activations.swish(x)) if act else tf.identity
+            self.act = (lambda x: keras.activations.relu(x)) if act else tf.identity
         else:
             raise Exception(f'no matching TensorFlow activation found for {w.act}')
 
