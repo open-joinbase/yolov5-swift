@@ -12,14 +12,14 @@ This repository is based on [ultralytics/yolov5](https://github.com/ultralytics/
  :-----:|:-----:|:----------:|:----:|:----:|:----:|:----:|
  yolov5n6-xiao| 192×192| 0.9G|0.7M|1.23| 0.28|0.15
 
-See the wiki: https://colab.research.google.com/drive/1-6oJ2hzrOCcHTEbEqFW8b7-pEVeP3sOi?usp=sharing 
+See the wiki: [https://colab.research.google.com/drive/1-6oJ2hzrOCcHTEbEqFW8b7-pEVeP3sOi?usp=sharing ](https://colab.research.google.com/drive/1la_6coO9f-KqSH98QjRuf8q82fSPCJDr?usp=sharing#scrollTo=GD9gUQpaBxNa)
 
 ## Test speed in different situations
 
 Equipment|Computing backend|Input|specification|time(ms)
 :---:|:---:|:---:|:---:|:---:|
 Inter|i5-9400@2.90GHz|192×192|pt|15
-Himax|400MHz|192×192|tflite|700
+Himax6537|400MHz|192×192|tflite|700
 
 
 ## <div>How to use</div>

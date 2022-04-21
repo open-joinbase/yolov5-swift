@@ -23,6 +23,7 @@
 *.cfg
 !setup.cfg
 !cfg/yolov3*.cfg
+!extra/*.jpg
 
 storage.googleapis.com
 runs/*
