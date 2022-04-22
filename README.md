@@ -5,14 +5,11 @@ This repository is based on [ultralytics/yolov5](https://github.com/ultralytics/
 ![image](./extra/test_show.jpg)
 
 
-
 ## Model test results on the coco dataset
 
   Model | Input_size|Flops| Params | Size（M） |Map@0.5|Map@.5:0.95
  :-----:|:-----:|:----------:|:----:|:----:|:----:|:----:|
  yolov5n6-xiao| 192×192| 0.9G|0.7M|1.23| 0.28|0.15
-
-See the wiki: [https://colab.research.google.com/drive/1-6oJ2hzrOCcHTEbEqFW8b7-pEVeP3sOi?usp=sharing ](https://colab.research.google.com/drive/1la_6coO9f-KqSH98QjRuf8q82fSPCJDr?usp=sharing#scrollTo=GD9gUQpaBxNa)
 
 ## Test speed in different situations
 
@@ -22,7 +19,8 @@ Inter|i5-9400@2.90GHz|192×192|pt|15
 Himax6537|400MHz|192×192|tflite|700
 
 
-## <div>How to use</div>
+
+## <div>Quick start  <a href="https://colab.research.google.com/github/Seeed-Studio/yolov5-swift/blob/master/tutorial.ipynb" target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> </div> 
 
 <details open>
 <summary>Install</summary>
