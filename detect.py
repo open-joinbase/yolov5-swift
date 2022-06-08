@@ -44,7 +44,7 @@ from utils.datasets import IMG_FORMATS, VID_FORMATS, LoadImages, LoadStreams
 from utils.general import (LOGGER, check_file, check_img_size, check_imshow, check_requirements, colorstr,
                            increment_path, non_max_suppression, print_args, scale_coords, strip_optimizer, xyxy2xywh,
                            detection_no_object)
-from utils.plots import Annotator, colors, save_one_box
+from utils.plots import Annotator, colors, save_one_box, save_one_class
 from utils.torch_utils import select_device, time_sync
 
 
@@ -124,6 +124,11 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
         t3 = time_sync()
         dt[1] += t3 - t2
 
+        if len(pred.shape) == 1:
+            pred = torch.argmax(pred)
+            save_one_class(names[pred.data.item()], im0s, path)
+            continue
+
         # NMS
         pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
 
@@ -199,6 +204,8 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
 
         # Print time (inference-only)
         LOGGER.info(f'{s}Done. ({t3 - t2:.3f}s)')
+    if len(pred.shape) == 1:
+        exit(0)
 
     # Print results
     t = tuple(x / seen * 1E3 for x in dt)  # speeds per image
