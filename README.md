@@ -86,10 +86,10 @@ At present, Seeed stipulates to run and store 4 tflite files, each file is less 
 
  offset|index
 :---:|:---:|
-|0x30000000|0|
-|0x30100000|1|
-|0x30200000|2|
-|0x30300000|3|
+|0x30000000|1|
+|0x30100000|2|
+|0x30200000|3|
+|0x30300000|4|
 
 You can simply convert tflite to uf2 with the following command.
 
