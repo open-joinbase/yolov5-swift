@@ -82,21 +82,17 @@ $ python export.py --data coco.yaml --cfg yolov5n6-xiao.yaml --weights yolov5n6-
 
 [UF2](https://github.com/microsoft/uf2) is a file format, developed by Microsoft. Seeed uses this format to convert .tflite to .uf2, allowing tflite files to be stored on the AIoT devices launched by Seeed.
 
-At present, Seeed stipulates to run and store 4 tflite files, each file is less than 1M, and its corresponding offset and index are listed below.
+Currently Seeed's devices support up to 4 models, each model (.tflite) is less than 1M .
 
- offset|index
-:---:|:---:|
-|0x30000000|1|
-|0x30100000|2|
-|0x30200000|3|
-|0x30300000|4|
-
-You can simply convert tflite to uf2 with the following command.
+You can specify the model to be placed in the corresponding index with `-t`.
 
 ```bash
-$ python uf2conv.py -e 4 -f GROVEAI -b 0x30000000 -c xxx.tflite -o xxx.uf2
-```
 
+$ python uf2conv.py -f GROVEAI -t 1 -c xxx.tflite -o xxx.uf2 # Place the model to index 1
+
+$ python uf2conv.py -f GROVEAI -t 1 xxx.tflite -o xxx.uf2 # Place the model to index 1 & flash it
+
+```
 </details>  
 
 

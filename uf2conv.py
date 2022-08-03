@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from ast import arg
 import sys
 import struct
 import subprocess
@@ -8,6 +9,8 @@ import os.path
 import argparse
 import json
 import time
+
+from requests import head
 
 try:
     import colorama
@@ -65,6 +68,12 @@ BOARD_IDS = \
     },
     ]
 
+FAMILYS= \
+    [
+        "GROVEAI",
+        "VISIONAI"
+    ]
+
 def getAllPortInfo():
     return comports(include_links=False)
     
@@ -107,10 +116,14 @@ UF2_MAGIC_START0 = 0x0A324655 # "UF2\n"
 UF2_MAGIC_START1 = 0x9E5D5157 # Randomly selected
 UF2_MAGIC_END    = 0x0AB16F30 # Ditto
 
+MODEL_MAGIC_NUM = 0x4C485400
+
 INFO_FILE = "/INFO_UF2.TXT"
 
-appstartaddr = 0x2000
-familyid = 0x0
+appstartaddr = 0x10000000
+familyid = 0xef32c892
+tag = 1
+family = "GROVEAI"
 
 def is_uf2(buf):
     w = struct.unpack("<II", buf[0:8])
@@ -126,10 +139,16 @@ def is_hex(buf):
     return False
 
 def convert_endian(buf, endian):
+    global tag, family
     if endian == 0 or endian == 1:
         return buf
-        
+
     outp = []
+
+    if family == "VISIONAI":
+        head = MODEL_MAGIC_NUM + tag
+        outp += head.to_bytes(4, byteorder='big')
+  
     buf_tmp = [b'0' for x in range(0, endian)]
     size = len(buf) - len(buf) % endian
     for i in range(0, size, endian):
@@ -375,16 +394,16 @@ def load_families():
 
 
 def main():
-    global appstartaddr, familyid
+    global appstartaddr,family, familyid, tag
     def error(msg):
         print(msg, file=sys.stderr)
         sys.exit(1)
     parser = argparse.ArgumentParser(description='Convert to UF2 or flash directly.')
     parser.add_argument('input', metavar='INPUT', type=str, nargs='?',
                         help='input file (HEX, BIN or UF2)')
-    parser.add_argument('-b' , '--base', dest='base', type=str,
-                        default="0x2000",
-                        help='set base address of application for BIN format (default: 0x2000)')
+    parser.add_argument('-f', '--family', dest='family', type=str,
+                        default="0x0",
+                         help='specify familyID - number or name (default: 0x0)')
     parser.add_argument('-o' , '--output', metavar="FILE", dest='output', type=str,
                         help='write output to named file; defaults to "flash.uf2" or "flash.bin" where sensible')
     parser.add_argument('-d' , '--device', dest="device_path",
@@ -393,30 +412,38 @@ def main():
                         help='list connected devices')
     parser.add_argument('-c' , '--convert', action='store_true',
                         help='do not flash, just convert')
-    parser.add_argument('-e' , '--endian', dest='endian', type=str, default="0",
-                        help='conversion endian')
+    parser.add_argument('-t' , '--tag', dest='tag', type=str, default="1",
+                        help='model to tag')
     parser.add_argument('-D' , '--deploy', action='store_true',
                         help='just flash, do not convert')
-    parser.add_argument('-f' , '--family', dest='family', type=str,
-                        default="0x0",
-                        help='specify familyID - number or name (default: 0x0)')
     parser.add_argument('-C' , '--carray', action='store_true',
                         help='convert binary file to a C array, not UF2')
     parser.add_argument('-i', '--info', action='store_true',
                         help='display header information from UF2, do not convert')
+
     args = parser.parse_args()
-    appstartaddr = int(args.base, 0)
-    endian = int(args.endian, 0)
+    tag = int(args.tag, 0)
+    endian = 0
+    
+    family = args.family.upper() 
 
-    families = load_families()
+    if family not in FAMILYS:
+        print(Fore.RED + "Invalid parameters!" + Style.RESET_ALL)
+        sys.exit(1)
 
-    if args.family.upper() in families:
-        familyid = families[args.family.upper()]
+    if tag == 0: # firmware
+        appstartaddr = 0x10000000
+        endian = 0
+    elif tag <= 4: # custom models
+        appstartaddr = 0x30000000 + (( tag - 1) % 4 * 0x100000)
+        endian = 4
+    elif tag <= 32: # preset model
+        appstartaddr = 0x30000000 + ((3 - ( tag - 1) % 4) * 0x100000)
+        endian = 4
     else:
-        try:
-            familyid = int(args.family, 0)
-        except ValueError:
-            error("Family ID needs to be a number or one of: " + ", ".join(families.keys()))
+        print(Fore.RED + "Invalid parameters!" + Style.RESET_ALL)
+    
+
 
     if args.list:
         list_drives()
