@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from statistics import mode
 import sys
 import struct
 import subprocess
@@ -8,8 +7,100 @@ import os
 import os.path
 import argparse
 import json
+import time
+
+try:
+    import colorama
+except ImportError:
+    print("Installing colorama module")
+    res = os.system("pip3 install colorama")
+    if res != 0:
+        print("colorama module installation failed")
+        sys.exit(1)
+    import colorama
+
+from colorama import init, Fore, Back, Style
+
+try:
+    import serial
+except ImportError:
+    print("Installing pyserial module")
+    res = os.system("pip3 install pyserial")
+    if res != 0:
+        print("pyserial module installation failed")
+        sys.exit(1)
+    import serial
+
+if os.name == 'nt':  # sys.platform == 'win32':
+    from serial.tools.list_ports_windows import comports
+elif os.name == 'posix':
+    from serial.tools.list_ports_posix import comports
+else:
+    raise Import
 
 from numpy import uint8
+
+# List of supported board USB IDs.  Each board is a tuple of unique USB vendor
+# ID, USB product ID.
+BOARD_IDS = \
+    [{
+        "name": "grove ai",
+        "info": ("2886", "8060"),
+        "isbootloader": False
+    },
+    {
+        "name": "grove ai",
+        "info": ("2886", "0060"),
+        "isbootloader": True
+    },
+    {
+        "name": "vision ai",
+        "info": ("2886", "8061"),
+        "isbootloader": False
+    },
+    {
+        "name": "vision ai",
+        "info": ("2886", "0061"),
+        "isbootloader": True
+    },
+    ]
+
+def getAllPortInfo():
+    return comports(include_links=False)
+    
+def getAvailableBoard():
+    for info in getAllPortInfo():
+        port, desc, hwid = info 
+        ii = hwid.find("VID:PID")
+        #hwid: USB VID:PID=2886:002D SER=4D68990C5337433838202020FF123244 LOCATION=7-3.1.3:1.
+        if ii != -1:
+            for b in  BOARD_IDS:
+                (vid, pid) = b["info"]
+                if vid == hwid[ii + 8: ii + 8 + 4] and pid == hwid[ii + 8 + 5 :ii + 8 + 5 + 4 ]:
+                    if b["isbootloader"] == True :
+                        return port, True
+                    else:
+                        return port, False
+    return None, False
+
+def stty(port):
+    
+    if port == None:
+        _port, _isbootloader = getAvailableBoard()
+        if _port == None:
+            print(Fore.RED + "Could not find any available devices." + Style.RESET_ALL)
+            sys.exit(1)
+    else:
+        _port = port
+    
+    if os.name == "posix":
+        if platform.uname().system == "Darwin":
+            return "stty -f " + _port + " %d"
+        return "stty -F " + _port + " %d"
+    elif os.name == "nt":
+        return "MODE " + _port + ":BAUD=%d PARITY=N DATA=8 STOP=1"
+    
+    return "echo not support"
 
 
 UF2_MAGIC_START0 = 0x0A324655 # "UF2\n"
@@ -40,20 +131,12 @@ def convert_endian(buf, endian):
         
     outp = []
     buf_tmp = [b'0' for x in range(0, endian)]
-    mod =  len(buf) % endian
-    size = len(buf) - mod
+    size = len(buf) - len(buf) % endian
     for i in range(0, size, endian):
         for j in range(0, endian, 1):
-            buf_tmp[j] = buf[i + endian - j - 1]
+            buf_tmp[j] = buf[i+ endian - j - 1]
         outp += buf_tmp
 
-    for i in range(0, endian, 1):
-        if i < endian - mod:
-            buf_tmp[i] = 0
-        else:
-            buf_tmp[i] = buf[len(buf) - i + (endian - mod) - 1]
-    outp += buf_tmp
-        
     return bytes(outp)
 
 
@@ -368,13 +451,31 @@ def main():
             if args.output == None:
                 args.output = "flash." + ext
         else:
-            drives = get_drives()
+            _port, _isbootloader = getAvailableBoard()
+            if _port == None:
+                print(Fore.RED + "Could not find any available devices." +  Style.RESET_ALL)
+                sys.exit(1)
+
+            if _isbootloader == False:
+                _cmd = stty(_port)
+
+                if _cmd != "echo not support":
+                    os.system(_cmd % 1200)
+                    print("Enter Bootloader...")
+            
+            for i in range(0, 5):
+                time.sleep(1)
+                drives = get_drives()
+                if len(drives) != 0:
+                    break
+                print("Wait...")
 
         if args.output:
             write_file(args.output, outbuf)
         else:
             if len(drives) == 0:
                 error("No drive to deploy.")
+
         for d in drives:
             print("Flashing %s (%s)" % (d, board_id(d)))
             write_file(d + "/NEW.UF2", outbuf)
