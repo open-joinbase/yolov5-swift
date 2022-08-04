@@ -402,7 +402,7 @@ def main():
     parser.add_argument('input', metavar='INPUT', type=str, nargs='?',
                         help='input file (HEX, BIN or UF2)')
     parser.add_argument('-f', '--family', dest='family', type=str,
-                        default="0x0",
+                        default="GROVEAI",
                          help='specify familyID - number or name (default: 0x0)')
     parser.add_argument('-o' , '--output', metavar="FILE", dest='output', type=str,
                         help='write output to named file; defaults to "flash.uf2" or "flash.bin" where sensible')
