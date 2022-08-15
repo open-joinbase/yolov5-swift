@@ -9,13 +9,13 @@ This repository is based on [ultralytics/yolov5](https://github.com/ultralytics/
 
   Model | Input_size|Flops| Params | Size（M） |Map@0.5|Map@.5:0.95
  :-----:|:-----:|:----------:|:----:|:----:|:----:|:----:|
- yolov5n6-xiao| 192×192| 0.9G|0.7M|1.23| 0.28|0.15
+ yolov5n6-xiao| 192×192| 0.07G|0.4M|0.5| 0.28|0.15
 
 ## Test speed in different situations
 
 Equipment|Computing backend|Input|specification|time(ms)
 :---:|:---:|:---:|:---:|:---:|
-Inter|i5-9400@2.90GHz|192×192|pt|15
+Intel|i5-9400@2.90GHz|192×192|pt|15
 Himax6537|400MHz|192×192|tflite|700
 
 
