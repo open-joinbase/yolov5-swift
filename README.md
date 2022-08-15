@@ -7,7 +7,7 @@ This repository is based on [ultralytics/yolov5](https://github.com/ultralytics/
 
 ## Model test results on the coco dataset
 
-  Model | Input_size|Flops| Params | Size（M） |Map@0.5|Map@.5:0.95
+  Model | Input_size|FLOPs| Params | Size（M） |Map@0.5|Map@.5:0.95
  :-----:|:-----:|:----------:|:----:|:----:|:----:|:----:|
  yolov5n6-xiao| 192×192| 0.07G|0.4M|0.5| 0.28|0.15
 
