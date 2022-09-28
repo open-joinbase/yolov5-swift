@@ -1,0 +1,4 @@
+train: ../yolo2/train/images
+val: ../yolo2/test/images
+nc: 4
+names: [ 'Spider', 'Duck', 'Magpie', 'Butterfly']
